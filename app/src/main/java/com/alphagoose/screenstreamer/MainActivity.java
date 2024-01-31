@@ -1,6 +1,11 @@
 package com.alphagoose.screenstreamer;
 
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.IntentFilter;
+import android.content.ServiceConnection;
+import android.os.IBinder;
 import android.util.Log;
 import android.app.Activity;
 import android.app.Notification;
@@ -23,6 +28,7 @@ import android.widget.TextView;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -35,10 +41,46 @@ import okhttp3.WebSocketListener;
 import okio.ByteString;
 
 public class MainActivity extends Activity {
-    private WebSocket webSocket;
-    private MediaProjectionManager mediaProjectionManager;
-    private boolean isRecording = false;
-    private static final int REQUEST_CODE = 1000;
+    private WebSocketService webSocketService;
+    private boolean isBound = false;
+
+    // Define the ServiceConnection
+    private ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName className, IBinder service) {
+            WebSocketService.LocalBinder binder = (WebSocketService.LocalBinder) service;
+            webSocketService = binder.getService();
+            isBound = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            isBound = false;
+        }
+    };
+    @Override
+    protected void onStart() {
+        super.onStart();
+        LocalBroadcastManager.getInstance(this).registerReceiver(messageReceiver, new IntentFilter("WebSocketServiceUpdate"));
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(messageReceiver);
+    }
+
+    // Define the receiver
+    private BroadcastReceiver messageReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Extract data included in the Intent
+            String message = intent.getStringExtra("message");
+            // Do something with the message
+            TextView textView = findViewById(R.id.websocketStatus);
+            textView.setText(message);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,103 +89,32 @@ public class MainActivity extends Activity {
 
 
         Button connectButton = findViewById(R.id.connectButton);
-        connectButton.setOnClickListener(v -> initWebSocket());
+        connectButton.setOnClickListener(v -> startWebSocketService());
         Button disconnectButton = findViewById(R.id.disconnectButton);
-        disconnectButton.setOnClickListener(v -> shutdownWebSocket());
+        disconnectButton.setOnClickListener(v -> stopWebSocketService());
         Button pingButton = findViewById(R.id.pingButton);
-        pingButton.setOnClickListener(v -> pingSignalServer());
-
-        Button startButton = findViewById(R.id.startButton);
-        startButton.setOnClickListener(v -> startRecording());
-        Button stopButton = findViewById(R.id.stopButton);
-        stopButton.setOnClickListener(v -> stopRecording());
-
+        pingButton.setOnClickListener(v -> pingWebService());
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE && resultCode == RESULT_OK) {
 
-            Intent intent = new Intent(this, MediaProjectionService.class);
-            intent.putExtra("resultCode", resultCode);
-            intent.putExtra("data", data);
-            startService(intent);
-            ContextCompat.startForegroundService(this, intent);
-            isRecording = true;
+    private void startWebSocketService() {
+        Intent serviceIntent = new Intent(this, WebSocketService.class);
+        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+        ContextCompat.startForegroundService(this, serviceIntent);
+    }
+
+    private void stopWebSocketService() {
+        if (isBound) {
+            unbindService(serviceConnection);
+            isBound = false;
+        }
+        Intent serviceIntent = new Intent(this, WebSocketService.class);
+        stopService(serviceIntent);
+    }
+
+    private void pingWebService() {
+        if (isBound) {
+            webSocketService.pingSignalServer();
         }
     }
-
-    private void startRecording() {
-        if (isRecording) {
-            return;
-        }
-
-        mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-        startActivityForResult(mediaProjectionManager.createScreenCaptureIntent(), REQUEST_CODE);
-
-    }
-
-    private void stopRecording() {
-        if (!isRecording) {
-            return;
-        }
-        //stopEncodingThread();
-        isRecording = false;
-        //mediaCodec.stop();
-        //mediaCodec.release();
-    }
-
-
-
-    private void initWebSocket() {
-        OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder().url("ws://10.0.2.2:8080").build();
-        webSocket = client.newWebSocket(request, new WebSocketListener() {
-            @Override
-            public void onOpen(WebSocket webSocket, okhttp3.Response response) {
-                super.onOpen(webSocket, response);
-                runOnUiThread(() -> Log.i("WebSocket", "Connected to the server"));
-                TextView textView = findViewById(R.id.websocketStatus);
-
-                // Set the text value
-                textView.setText("Signaling Server: Connected");
-            }
-
-            @Override
-            public void onMessage(WebSocket webSocket, String text) {
-                super.onMessage(webSocket, text);
-                runOnUiThread(() -> Log.i("WebSocket", "Message received: " + text));
-            }
-
-            @Override
-            public void onClosing(WebSocket webSocket, int code, String reason) {
-                super.onClosing(webSocket, code, reason);
-                runOnUiThread(() -> Log.i("WebSocket", "Closing: " + reason));
-            }
-
-            @Override
-            public void onFailure(WebSocket webSocket, Throwable t, okhttp3.Response response) {
-                super.onFailure(webSocket, t, response);
-                runOnUiThread(() -> Log.e("WebSocket", "Error: " + t.getMessage()));
-            }
-        });
-    }
-
-    private void sendVideoData(ByteBuffer data) {
-        if (webSocket != null) {
-            webSocket.send(ByteString.of(data));
-        }
-    }
-
-    private void shutdownWebSocket()
-    {
-        webSocket.close(1000, "Initiated by user");
-    }
-
-    private void pingSignalServer() {
-    webSocket.send("Android-Ping");
-    }
-
-
 }
