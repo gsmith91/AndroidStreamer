@@ -25,25 +25,24 @@ import okhttp3.WebSocketListener;
 
 public class WebSocketService extends Service {
     private static final String CHANNEL_ID = "WebSocketServiceChannel";
-    private WebSocket webSocket;
     private final Handler mainThreadHandler = new Handler(Looper.getMainLooper());
-
     private final IBinder binder = new LocalBinder();
+    private WebSocket webSocket;
 
     public class LocalBinder extends Binder {
         WebSocketService getService() {
             return WebSocketService.this;
         }
     }
+
+    public void pingSignalServer() {
+        webSocket.send("AndroidStudio: PING");
+    }
+
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
         return binder;
-    }
-
-    // Public methods that you can call from the activity
-    public void pingSignalServer() {
-        webSocket.send("AndroidStudio: PING");
     }
 
     @Override
@@ -70,6 +69,7 @@ public class WebSocketService extends Service {
         startForeground(1, notification);
         initWebSocket();
     }
+
 
     private void initWebSocket() {
         OkHttpClient client = new OkHttpClient();
@@ -117,5 +117,4 @@ public class WebSocketService extends Service {
             manager.createNotificationChannel(serviceChannel);
         }
     }
-
 }
