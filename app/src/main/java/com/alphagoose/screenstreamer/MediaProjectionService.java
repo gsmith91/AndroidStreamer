@@ -31,6 +31,7 @@ import android.media.MediaFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+
 public class MediaProjectionService extends Service {
     private static final String CHANNEL_ID = "MediaProjectionServiceChannel";
     private static final long TIMEOUT_US = 10000; // Timeout for dequeuing
@@ -261,4 +262,5 @@ public class MediaProjectionService extends Service {
         // Convert the frame to a format suitable for WebRTC and send it
         // This will involve the WebRTC native APIs to handle video frames
     }
+
 }

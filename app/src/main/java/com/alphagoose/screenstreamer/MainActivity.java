@@ -10,10 +10,8 @@ import android.os.IBinder;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.provider.MediaStore;
 import android.widget.Button;
 import android.widget.TextView;
-
 import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
@@ -37,19 +35,6 @@ public class MainActivity extends Activity {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(messageReceiver);
     }
 
-    //@Override
-    //protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-    //    super.onActivityResult(requestCode, resultCode, data);
-    //    if (requestCode == REQUEST_MEDIA && resultCode == RESULT_OK) {
-    //        Intent serviceIntent = new Intent(this, MediaProjectionService.class);
-    ///        startService(serviceIntent);
-    //        bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE);
-    //        // After binding, start projection in service
-    //        if (mediaProjectionService != null) {
-    //            mediaProjectionService.startMediaProjection(resultCode, data);
-    //        }
-    //    }
-    //}
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -61,8 +46,8 @@ public class MainActivity extends Activity {
             serviceIntent.putExtra("resultCode", resultCode);
             serviceIntent.putExtra("data", data);
 
-            // Start your service
-            startService(serviceIntent);
+            ContextCompat.startForegroundService(this, serviceIntent);
+            bindService(serviceIntent, mediaProjectionServiceConnection, Context.BIND_AUTO_CREATE);
         }
     }
 
@@ -112,14 +97,6 @@ public class MainActivity extends Activity {
         MediaProjectionManager projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         startActivityForResult(projectionManager.createScreenCaptureIntent(), REQUEST_MEDIA);
     }
-
-    private void startMediaProjectionService(Intent data) {
-        Intent serviceIntent = new Intent(this, MediaProjectionService.class);
-        serviceIntent.putExtras(data); // Pass along the Intent data containing the projection token
-        ContextCompat.startForegroundService(this, serviceIntent);
-        bindService(serviceIntent, mediaProjectionServiceConnection, Context.BIND_AUTO_CREATE);
-    }
-
 
     private void stopMediaProjectionService() {
         if (isMediaProjectionServiceBound) {
