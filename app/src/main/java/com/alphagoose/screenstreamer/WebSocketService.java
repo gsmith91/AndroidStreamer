@@ -30,8 +30,11 @@ import org.webrtc.RtpReceiver;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -44,6 +47,9 @@ public class WebSocketService extends Service {
     private final IBinder binder = new LocalBinder();
     private WebSocket webSocket;
     private PeerConnection peerConnection;
+    private DataChannel dataChannel;
+    private Queue<JSONObject> offerQueue = new LinkedList<>();
+    private Queue<JSONObject> answerQueue = new LinkedList<>();
 
     public class LocalBinder extends Binder {
         WebSocketService getService() {
@@ -53,6 +59,9 @@ public class WebSocketService extends Service {
 
     public void pingSignalServer() {
         webSocket.send("AndroidStudio: PING");
+    }
+    public void callVideoReceiver() {
+        createOffer();
     }
 
     @Nullable
@@ -89,7 +98,7 @@ public class WebSocketService extends Service {
 
     private void initWebSocket() {
         OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder().url("ws://10.0.2.2:8080").build();
+        Request request = new Request.Builder().url("https://fern-talented-drop.glitch.me/").build();
         webSocket = client.newWebSocket(request, new WebSocketListener() {
             @Override
             public void onOpen(WebSocket webSocket, okhttp3.Response response) {
@@ -172,16 +181,24 @@ public class WebSocketService extends Service {
 
         peerConnection = factory.createPeerConnection(rtcConfig, new PeerConnection.Observer() {
             @Override
-            public void onSignalingChange(PeerConnection.SignalingState signalingState) {}
+            public void onSignalingChange(PeerConnection.SignalingState signalingState) {
+
+            }
 
             @Override
-            public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {}
+            public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
+
+            }
 
             @Override
-            public void onIceConnectionReceivingChange(boolean b) {}
+            public void onIceConnectionReceivingChange(boolean b) {
+
+            }
 
             @Override
-            public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {}
+            public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
+
+            }
 
             @Override
             public void onIceCandidate(IceCandidate iceCandidate) {
@@ -198,32 +215,61 @@ public class WebSocketService extends Service {
             }
 
             @Override
-            public void onIceCandidatesRemoved(IceCandidate[] iceCandidates) {}
+            public void onIceCandidatesRemoved(IceCandidate[] iceCandidates) {
+
+            }
 
             @Override
-            public void onAddStream(MediaStream mediaStream) {}
+            public void onAddStream(MediaStream mediaStream) {
+
+            }
 
             @Override
-            public void onRemoveStream(MediaStream mediaStream) {}
+            public void onRemoveStream(MediaStream mediaStream) {
+
+            }
 
             @Override
-            public void onDataChannel(DataChannel dataChannel) {}
+            public void onDataChannel(DataChannel dataChannel) {
+
+            }
 
             @Override
-            public void onRenegotiationNeeded() {}
+            public void onRenegotiationNeeded() {
+
+            }
 
             @Override
-            public void onAddTrack(RtpReceiver rtpReceiver, MediaStream[] mediaStreams) {}
+            public void onAddTrack(RtpReceiver rtpReceiver, MediaStream[] mediaStreams) {
+
+            }
 
         });
 
+    }
+
+
+    private void waitForThreeSecondsThenCallMethod() {
+        Handler handler = new Handler(Looper.getMainLooper());
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                // Call your method here
+                processQueuedMessages();
+            }
+        }, 3000);
+    }
+
+    private void createOffer() {
         peerConnection.createOffer(new SdpObserver() {
             @Override
             public void onCreateSuccess(SessionDescription offer) {
                 // Set local description
                 peerConnection.setLocalDescription(new SdpObserver() {
                     @Override
-                    public void onCreateSuccess(SessionDescription sessionDescription) {}
+                    public void onCreateSuccess(SessionDescription sessionDescription) {
+
+                    }
 
                     @Override
                     public void onSetSuccess() {
@@ -239,23 +285,34 @@ public class WebSocketService extends Service {
                     }
 
                     @Override
-                    public void onCreateFailure(String error) {}
+                    public void onCreateFailure(String error) {
+
+                    }
 
                     @Override
-                    public void onSetFailure(String error) {}
+                    public void onSetFailure(String error) {
+
+                    }
                 }, offer);
+
+            }
+
+
+            @Override
+            public void onSetSuccess() {
+
             }
 
             @Override
-            public void onSetSuccess() {}
+            public void onCreateFailure(String error) {
+
+            }
 
             @Override
-            public void onCreateFailure(String error) {}
+            public void onSetFailure(String error) {
 
-            @Override
-            public void onSetFailure(String error) {}
+            }
         }, new MediaConstraints());
-
     }
 
     private void handleOffer(JSONObject message) throws JSONException {
@@ -280,14 +337,47 @@ public class WebSocketService extends Service {
             answerMessage.put("type", "answer");
             answerMessage.put("sdp", answer.description);
             webSocket.send(answerMessage.toString());
+            initDataChannel();
         } catch (JSONException e) {
             e.printStackTrace();
         }
     }
 
     private void handleAnswer(JSONObject message) throws JSONException {
+        if (peerConnection == null || peerConnection.signalingState() != PeerConnection.SignalingState.STABLE) {
+            // If peerConnection is not ready, enqueue the answer for later processing
+            answerQueue.offer(message);
+
+            waitForThreeSecondsThenCallMethod();
+
+            return;
+        }
+
+        // Process the answer immediately
         SessionDescription answer = new SessionDescription(SessionDescription.Type.ANSWER, message.getString("sdp"));
-        peerConnection.setRemoteDescription(new SdpObserverAdapter(), answer);
+        peerConnection.setRemoteDescription(new SdpObserverAdapter() {
+            @Override
+            public void onSetSuccess() {
+                // Create the local description (answer)
+                peerConnection.createAnswer(new SdpObserverAdapter() {
+                    @Override
+                    public void onCreateSuccess(SessionDescription localDescription) {
+                        // Set the local description
+                        peerConnection.setLocalDescription(new SdpObserverAdapter(), localDescription);
+                    }
+
+                    @Override
+                    public void onCreateFailure(String error) {
+                        Log.e("WebSocketService", "Failed to create answer: " + error);
+                    }
+                }, new MediaConstraints());
+            }
+
+            @Override
+            public void onSetFailure(String error) {
+                Log.e("WebSocketService", "Failed to set remote description: " + error);
+            }
+        }, answer);
     }
 
     private void handleIceCandidate(JSONObject message) throws JSONException {
@@ -325,4 +415,82 @@ public class WebSocketService extends Service {
         }
     }
 
+
+    private void initDataChannel() {
+        DataChannel.Init dataChannelInit = new DataChannel.Init();
+        dataChannelInit.ordered = true; // Messages are delivered in order
+        dataChannelInit.negotiated = false;
+        dataChannelInit.id = 0; // The ID for the data channel. Automatically chosen if -1
+        dataChannelInit.maxRetransmits = -1; // No retransmits
+        dataChannel = peerConnection.createDataChannel("testChannel", dataChannelInit);
+
+        dataChannel.registerObserver(new DataChannel.Observer() {
+            @Override
+            public void onBufferedAmountChange(long previousAmount) {
+                // Called when the buffered amount changes
+            }
+
+            @Override
+            public void onStateChange() {
+                // Called when the state of the DataChannel changes
+                if (dataChannel.state() == DataChannel.State.OPEN) {
+                    Log.i("DataChannel", "DataChannel is open");
+                }
+            }
+
+            @Override
+            public void onMessage(DataChannel.Buffer buffer) {
+                // Called when a message is received. This is where you handle incoming messages.
+                ByteBuffer data = buffer.data;
+                byte[] bytes = new byte[data.remaining()];
+                data.get(bytes);
+                String message = new String(bytes);
+                Log.i("DataChannel", "Received message: " + message);
+                // Optionally, update UI or handle the message as needed
+            }
+        });
+    }
+
+    public void sendTestData(String data) {
+        // Create a JSON object and put "data" with your message
+        JSONObject jsonObject = new JSONObject();
+        try {
+            jsonObject.put("message", data);
+            String jsonString = jsonObject.toString();
+
+            if (dataChannel != null && dataChannel.state() == DataChannel.State.OPEN) {
+                ByteBuffer buffer = ByteBuffer.wrap(jsonString.getBytes());
+                DataChannel.Buffer buf = new DataChannel.Buffer(buffer, false);
+                dataChannel.send(buf);
+                Log.i("DataChannel", "Sent data: " + jsonString);
+            } else {
+                Log.e("DataChannel", "DataChannel is not open or not initialized.");
+            }
+        } catch (JSONException e) {
+            Log.e("DataChannel", "Failed to create JSON: " + e.getMessage());
+        }
+    }
+
+    // Method to process queued offers and answers
+    private void processQueuedMessages() {
+        // Process queued offers
+        while (!offerQueue.isEmpty()) {
+            JSONObject offer = offerQueue.poll();
+            try {
+                handleOffer(offer);
+            } catch (JSONException e) {
+                Log.e("WebSocketService", "Error processing queued offer: " + e.getMessage());
+            }
+        }
+
+        // Process queued answers
+        while (!answerQueue.isEmpty()) {
+            JSONObject answer = answerQueue.poll();
+            try {
+                handleAnswer(answer);
+            } catch (JSONException e) {
+                Log.e("WebSocketService", "Error processing queued answer: " + e.getMessage());
+            }
+        }
+    }
 }

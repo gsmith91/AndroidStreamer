@@ -65,6 +65,9 @@ public class MainActivity extends Activity {
         Button pingButton = findViewById(R.id.pingButton);
         pingButton.setOnClickListener(v -> pingWebService());
 
+        Button callButton = findViewById(R.id.callButton);
+        callButton.setOnClickListener(v -> callVideoReceiver());
+
         Button startRecordingButton = findViewById(R.id.startButton);
         startRecordingButton.setOnClickListener(v -> requestMediaProjection());
 
@@ -89,8 +92,13 @@ public class MainActivity extends Activity {
 
     private void pingWebService() {
         if (isWebSocketServiceBound) {
-            webSocketService.pingSignalServer();
+            //webSocketService.pingSignalServer();
+            webSocketService.sendTestData("TESTINGGGG");
         }
+    }
+
+    private void callVideoReceiver() {
+        webSocketService.callVideoReceiver();
     }
 
     private void requestMediaProjection() {
